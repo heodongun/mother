@@ -50,7 +50,10 @@ class OverdueVerificationActivity : ComponentActivity() {
                         .onSuccess {
                             loading = false
                             Toast.makeText(this@OverdueVerificationActivity, it.message, Toast.LENGTH_SHORT).show()
-                            if (it.verified) finish()
+                            if (it.verified) {
+                                runCatching { storage.toggleTaskCompletion(taskId) }
+                                finish()
+                            }
                         }
                         .onFailure {
                             loading = false
