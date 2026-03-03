@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:2:1-26:12
-INJECTED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:2:1-26:12
-INJECTED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:2:1-26:12
-INJECTED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:2:1-26:12
+ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:2:1-41:12
+INJECTED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:2:1-41:12
+INJECTED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:2:1-41:12
+INJECTED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:2:1-41:12
 MERGED from [androidx.navigation:navigation-common:2.7.5] /Users/heodongun/.gradle/caches/transforms-3/8a7a9056e856c825cf4ec79d548073ef/transformed/navigation-common-2.7.5/AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.navigation:navigation-runtime:2.7.5] /Users/heodongun/.gradle/caches/transforms-3/d674331a1d6f331b2706822bddcdafab/transformed/navigation-runtime-2.7.5/AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.navigation:navigation-common-ktx:2.7.5] /Users/heodongun/.gradle/caches/transforms-3/4619b696e299731f013840db8c728d82/transformed/navigation-common-ktx-2.7.5/AndroidManifest.xml:2:1-7:12
@@ -65,9 +65,13 @@ MERGED from [androidx.tracing:tracing:1.0.0] /Users/heodongun/.gradle/caches/tra
 		INJECTED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml
 	xmlns:android
 		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:2:11-69
+uses-permission#android.permission.INTERNET
+ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:5:5-67
+	android:name
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:5:22-64
 application
-ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:5:5-24:19
-INJECTED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:5:5-24:19
+ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:7:5-39:19
+INJECTED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:7:5-39:19
 MERGED from [androidx.compose.ui:ui-test-manifest:1.5.4] /Users/heodongun/.gradle/caches/transforms-3/49134ffb815cfa1aa0256497e0d3da3b/transformed/ui-test-manifest-1.5.4/AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.compose.ui:ui-test-manifest:1.5.4] /Users/heodongun/.gradle/caches/transforms-3/49134ffb815cfa1aa0256497e0d3da3b/transformed/ui-test-manifest-1.5.4/AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.compose.ui:ui-tooling-android:1.5.4] /Users/heodongun/.gradle/caches/transforms-3/998fe5af4dd61ac534bc82a3b8e21c03/transformed/ui-tooling-release/AndroidManifest.xml:22:5-26:19
@@ -89,41 +93,61 @@ MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/heodongun/.gradle/ca
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.12.0] /Users/heodongun/.gradle/caches/transforms-3/2ccd268e0ca2e1cd10ec650ac8067a3e/transformed/core-1.12.0/AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:12:9-35
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:14:9-35
 	android:label
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:10:9-41
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:12:9-41
 	android:fullBackupContent
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:8:9-54
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:10:9-54
 	android:roundIcon
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:11:9-54
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:13:9-54
 	tools:targetApi
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:14:9-29
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:16:9-29
 	android:icon
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:9:9-43
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:11:9-43
 	android:allowBackup
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:6:9-35
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:8:9-35
 	android:theme
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:13:9-50
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:15:9-50
 	android:dataExtractionRules
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:7:9-65
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:9:9-65
 activity#com.smartpet.todo.MainActivity
-ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:15:9-23:20
+ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:17:9-25:20
 	android:exported
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:17:13-36
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:19:13-36
 	android:theme
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:18:13-54
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:20:13-54
 	android:name
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:16:13-41
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:18:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:19:13-22:29
+ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:21:13-24:29
 action#android.intent.action.MAIN
-ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:20:17-69
+ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:22:17-69
 	android:name
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:20:25-66
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:22:25-66
 category#android.intent.category.LAUNCHER
-ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:21:17-77
+ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:23:17-77
 	android:name
-		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:21:27-74
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:23:27-74
+activity#com.smartpet.todo.ui.OverdueVerificationActivity
+ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:27:9-33:57
+	android:turnScreenOn
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:31:13-40
+	android:excludeFromRecents
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:32:13-46
+	android:exported
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:29:13-37
+	android:showOnLockScreen
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:30:13-44
+	android:theme
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:33:13-54
+	android:name
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:28:13-59
+receiver#com.smartpet.todo.alarm.OverdueAlarmReceiver
+ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:35:9-37:40
+	android:exported
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:37:13-37
+	android:name
+		ADDED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml:36:13-55
 uses-sdk
 INJECTED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /Users/Projects/mother/SmartPetTodo/app/src/main/AndroidManifest.xml

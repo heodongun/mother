@@ -11,6 +11,7 @@ class OverdueAlarmReceiver : BroadcastReceiver() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra("taskId", intent?.getStringExtra("taskId") ?: "")
             putExtra("taskTitle", intent?.getStringExtra("taskTitle") ?: "할 일")
+            putExtra("taskDescription", intent?.getStringExtra("taskDescription") ?: "")
         }
         context.startActivity(i)
     }

@@ -7,6 +7,7 @@ import com.smartpet.todo.alarm.OverdueScheduler
 import com.smartpet.todo.data.RemoteStorage
 import com.smartpet.todo.data.Task
 import com.smartpet.todo.data.TaskPriority
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,10 +30,13 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refresh() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            val tasks = storage.loadTasks()
-            _uiState.value = _uiState.value.copy(tasks = tasks, isLoading = false)
-            OverdueScheduler.scheduleAll(appContext, tasks)
+            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            runCatching { storage.loadTasks() }
+                .onSuccess { tasks ->
+                    _uiState.value = _uiState.value.copy(tasks = tasks, isLoading = false, errorMessage = null)
+                    OverdueScheduler.scheduleAll(appContext, tasks)
+                }
+                .onFailure(::handleFailure)
         }
     }
 
@@ -59,9 +63,12 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 maxEnforcementLevel = maxEnforcementLevel.coerceIn(1, 3),
                 estimatedMinutes = estimatedMinutes?.takeIf { it > 0 }?.coerceAtMost(24 * 60)
             )
-            val tasks = storage.addTask(task)
-            _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
-            OverdueScheduler.scheduleAll(appContext, tasks)
+            runCatching { storage.addTask(task) }
+                .onSuccess { tasks ->
+                    _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
+                    OverdueScheduler.scheduleAll(appContext, tasks)
+                }
+                .onFailure(::handleFailure)
         }
     }
 
@@ -71,26 +78,35 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.value = _uiState.value.copy(errorMessage = "제목을 입력해주세요.")
                 return@launch
             }
-            val tasks = storage.updateTask(normalized)
-            _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
-            OverdueScheduler.scheduleAll(appContext, tasks)
+            runCatching { storage.updateTask(normalized) }
+                .onSuccess { tasks ->
+                    _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
+                    OverdueScheduler.scheduleAll(appContext, tasks)
+                }
+                .onFailure(::handleFailure)
         }
     }
 
     fun deleteTask(taskId: String) {
         viewModelScope.launch {
             OverdueScheduler.cancel(appContext, taskId)
-            val tasks = storage.deleteTask(taskId)
-            _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
-            OverdueScheduler.scheduleAll(appContext, tasks)
+            runCatching { storage.deleteTask(taskId) }
+                .onSuccess { tasks ->
+                    _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
+                    OverdueScheduler.scheduleAll(appContext, tasks)
+                }
+                .onFailure(::handleFailure)
         }
     }
 
     fun toggleTaskCompletion(taskId: String) {
         viewModelScope.launch {
-            val tasks = storage.toggleTaskCompletion(taskId)
-            _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
-            OverdueScheduler.scheduleAll(appContext, tasks)
+            runCatching { storage.toggleTaskCompletion(taskId) }
+                .onSuccess { tasks ->
+                    _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
+                    OverdueScheduler.scheduleAll(appContext, tasks)
+                }
+                .onFailure(::handleFailure)
         }
     }
 
@@ -100,9 +116,12 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.value = _uiState.value.copy(errorMessage = "제목을 입력해주세요.")
                 return@launch
             }
-            val tasks = storage.upsertTask(normalized)
-            _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
-            OverdueScheduler.scheduleAll(appContext, tasks)
+            runCatching { storage.upsertTask(normalized) }
+                .onSuccess { tasks ->
+                    _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
+                    OverdueScheduler.scheduleAll(appContext, tasks)
+                }
+                .onFailure(::handleFailure)
         }
     }
 
@@ -114,6 +133,14 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             description = task.description.trim(),
             maxEnforcementLevel = task.maxEnforcementLevel.coerceIn(1, 3),
             estimatedMinutes = task.estimatedMinutes?.takeIf { it > 0 }?.coerceAtMost(24 * 60)
+        )
+    }
+
+    private fun handleFailure(throwable: Throwable) {
+        if (throwable is CancellationException) throw throwable
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            errorMessage = throwable.message?.takeIf { it.isNotBlank() } ?: "네트워크 오류가 발생했어요."
         )
     }
 }

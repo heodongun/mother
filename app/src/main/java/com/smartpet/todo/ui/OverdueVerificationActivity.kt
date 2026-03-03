@@ -1,8 +1,8 @@
 package com.smartpet.todo.ui
 
-import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
-import android.util.Base64
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -26,7 +26,7 @@ import com.smartpet.todo.data.RemoteStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
+import java.net.URLConnection
 
 class OverdueVerificationActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,16 +37,24 @@ class OverdueVerificationActivity : ComponentActivity() {
 
         val taskId = intent.getStringExtra("taskId").orEmpty()
         val taskTitle = intent.getStringExtra("taskTitle").orEmpty()
+        val taskDescription = intent.getStringExtra("taskDescription").orEmpty()
         val storage = RemoteStorage()
 
         setContent {
             var loading by remember { mutableStateOf(false) }
-            val launcher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
-                if (bitmap == null) return@rememberLauncherForActivityResult
+            val pickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+                if (uri == null) return@rememberLauncherForActivityResult
                 loading = true
                 lifecycleScope.launch {
-                    val b64 = withContext(Dispatchers.Default) { bitmap.toBase64Jpeg() }
-                    runCatching { storage.verifyPhoto(taskId, b64) }
+                    val uploadImage = withContext(Dispatchers.IO) { readUploadImage(uri) }
+                    if (uploadImage == null) {
+                        loading = false
+                        Toast.makeText(this@OverdueVerificationActivity, "이미지 파일을 읽을 수 없어요.", Toast.LENGTH_SHORT).show()
+                        return@launch
+                    }
+
+                    val taskPayload = buildTaskPayload(taskTitle, taskDescription)
+                    runCatching { storage.verifyPhoto(taskId, taskPayload, uploadImage) }
                         .onSuccess {
                             loading = false
                             Toast.makeText(this@OverdueVerificationActivity, it.message, Toast.LENGTH_SHORT).show()
@@ -72,15 +80,49 @@ class OverdueVerificationActivity : ComponentActivity() {
                 if (loading) {
                     CircularProgressIndicator()
                 } else {
-                    Button(onClick = { launcher.launch(null) }) { Text("사진으로 인증하기") }
+                    Button(
+                        onClick = {
+                            runCatching { pickerLauncher.launch(arrayOf("image/*")) }
+                                .onFailure {
+                                    Toast.makeText(
+                                        this@OverdueVerificationActivity,
+                                        "파일 선택 실패: ${it.message}",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                        }
+                    ) { Text("사진 선택해서 인증하기") }
                 }
             }
         }
     }
 }
 
-private fun Bitmap.toBase64Jpeg(quality: Int = 80): String {
-    val out = ByteArrayOutputStream()
-    compress(Bitmap.CompressFormat.JPEG, quality, out)
-    return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+private fun OverdueVerificationActivity.readUploadImage(uri: Uri): RemoteStorage.UploadImage? {
+    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+    if (bytes.isEmpty()) return null
+
+    val name = queryDisplayName(uri) ?: "upload.jpg"
+    val mimeType = contentResolver.getType(uri)
+        ?: URLConnection.guessContentTypeFromName(name)
+        ?: "application/octet-stream"
+
+    return RemoteStorage.UploadImage(
+        filename = name,
+        mimeType = mimeType,
+        bytes = bytes
+    )
+}
+
+private fun OverdueVerificationActivity.queryDisplayName(uri: Uri): String? {
+    return contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+    }
+}
+
+private fun buildTaskPayload(title: String, description: String): String {
+    return listOf(title.trim(), description.trim())
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
 }

@@ -8,6 +8,8 @@
         android:minSdkVersion="26"
         android:targetSdkVersion="34" />
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <permission
         android:name="com.smartpet.todo.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         android:protectionLevel="signature" />
@@ -37,6 +39,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name="com.smartpet.todo.ui.OverdueVerificationActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:showOnLockScreen="true"
+            android:theme="@style/Theme.SmartPetTodo"
+            android:turnScreenOn="true" />
+
+        <receiver
+            android:name="com.smartpet.todo.alarm.OverdueAlarmReceiver"
+            android:exported="false" />
+
         <activity
             android:name="androidx.activity.ComponentActivity"
             android:exported="true" />

@@ -1,5 +1,7 @@
 package com.smartpet.todo.ui.components
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +26,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DatePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -33,23 +34,21 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -413,133 +412,52 @@ private fun EnforcementChip(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DueDatePickerDialog(
     initialDateMillis: Long?,
     onDismiss: () -> Unit,
     onDateSelected: (Long) -> Unit
 ) {
-    val now = System.currentTimeMillis()
-    val initialSelected = initialDateMillis ?: now
-    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialSelected)
+    val context = LocalContext.current
+    val onDismissState = rememberUpdatedState(onDismiss)
+    val onDateSelectedState = rememberUpdatedState(onDateSelected)
 
-    val calendar = remember(initialDateMillis) {
-        Calendar.getInstance().apply {
+    androidx.compose.runtime.LaunchedEffect(initialDateMillis) {
+        val now = System.currentTimeMillis()
+        val initialCalendar = Calendar.getInstance().apply {
             timeInMillis = initialDateMillis ?: now
         }
-    }
-    var selectedHour by remember(initialDateMillis) { mutableIntStateOf(calendar.get(Calendar.HOUR_OF_DAY)) }
-    var selectedMinute by remember(initialDateMillis) { mutableIntStateOf(calendar.get(Calendar.MINUTE)) }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 560.dp)
-                .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "마감일 선택",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                DatePicker(
-                    state = datePickerState,
-                    showModeToggle = false
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text("시간", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    NumberPicker(
-                        label = "시간",
-                        value = selectedHour,
-                        onValueChange = { selectedHour = it },
-                        range = 0..23
-                    )
-                    Text(" : ", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    NumberPicker(
-                        label = "분",
-                        value = selectedMinute,
-                        onValueChange = { selectedMinute = it },
-                        range = 0..59
-                    )
+        val dateDialog = DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val selected = Calendar.getInstance().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("취소")
-                    }
-                    Button(
-                        onClick = {
-                            datePickerState.selectedDateMillis?.let { dateMillis ->
-                                val out = Calendar.getInstance()
-                                out.timeInMillis = dateMillis
-                                out.set(Calendar.HOUR_OF_DAY, selectedHour)
-                                out.set(Calendar.MINUTE, selectedMinute)
-                                out.set(Calendar.SECOND, 0)
-                                out.set(Calendar.MILLISECOND, 0)
-                                onDateSelected(out.timeInMillis)
-                            }
-                        },
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("확인")
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NumberPicker(
-    label: String,
-    value: Int,
-    onValueChange: (Int) -> Unit,
-    range: IntRange
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        TextButton(
-            onClick = { if (value > range.first) onValueChange(value - 1) },
-            modifier = Modifier.semantics { contentDescription = "$label 감소" }
-        ) {
-            Text("-", fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-        }
-        Text(
-            text = value.toString().padStart(2, '0'),
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.width(44.dp),
-            textAlign = TextAlign.Center
+                val timeDialog = TimePickerDialog(
+                    context,
+                    { _, hourOfDay, minute ->
+                        selected.set(Calendar.HOUR_OF_DAY, hourOfDay)
+                        selected.set(Calendar.MINUTE, minute)
+                        onDateSelectedState.value(selected.timeInMillis)
+                    },
+                    initialCalendar.get(Calendar.HOUR_OF_DAY),
+                    initialCalendar.get(Calendar.MINUTE),
+                    true
+                )
+                timeDialog.setOnCancelListener { onDismissState.value() }
+                timeDialog.show()
+            },
+            initialCalendar.get(Calendar.YEAR),
+            initialCalendar.get(Calendar.MONTH),
+            initialCalendar.get(Calendar.DAY_OF_MONTH)
         )
-        TextButton(
-            onClick = { if (value < range.last) onValueChange(value + 1) },
-            modifier = Modifier.semantics { contentDescription = "$label 증가" }
-        ) {
-            Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-        }
+        dateDialog.setOnCancelListener { onDismissState.value() }
+        dateDialog.show()
     }
 }
 

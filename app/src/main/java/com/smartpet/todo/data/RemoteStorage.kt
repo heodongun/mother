@@ -2,46 +2,52 @@ package com.smartpet.todo.data
 
 import com.google.gson.Gson
 import com.smartpet.todo.BuildConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.BufferedReader
+import java.io.DataOutputStream
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
-class RemoteStorage {
+class RemoteStorage(
+    private val tasksBaseUrl: String = BuildConfig.MOTHER_TASKS_BASE_URL,
+    private val verifyUrl: String = BuildConfig.MOTHER_VERIFY_URL
+) {
     private val gson = Gson()
 
-    suspend fun loadTasks(): List<Task> = request(BuildConfig.MOTHER_TASKS_BASE_URL + "/list", emptyMap()).tasks.map(::taskFromMap)
+    suspend fun loadTasks(): List<Task> = request("$tasksBaseUrl/list", emptyMap()).tasks.map(::taskFromMap)
 
     suspend fun addTask(task: Task): List<Task> {
-        request(BuildConfig.MOTHER_TASKS_BASE_URL + "/create", mapOf("task" to task.toPayload()))
+        request("$tasksBaseUrl/create", mapOf("task" to task.toPayload()))
         return loadTasks()
     }
 
     suspend fun updateTask(task: Task): List<Task> {
-        request(BuildConfig.MOTHER_TASKS_BASE_URL + "/update", mapOf("task" to task.toPayload()))
+        request("$tasksBaseUrl/update", mapOf("task" to task.toPayload()))
         return loadTasks()
     }
 
     suspend fun deleteTask(taskId: String): List<Task> {
-        request(BuildConfig.MOTHER_TASKS_BASE_URL + "/delete", mapOf("id" to taskId))
+        request("$tasksBaseUrl/delete", mapOf("id" to taskId))
         return loadTasks()
     }
 
     suspend fun toggleTaskCompletion(taskId: String): List<Task> {
-        request(BuildConfig.MOTHER_TASKS_BASE_URL + "/toggle", mapOf("id" to taskId))
+        request("$tasksBaseUrl/toggle", mapOf("id" to taskId))
         return loadTasks()
     }
 
     suspend fun upsertTask(task: Task): List<Task> {
-        request(BuildConfig.MOTHER_TASKS_BASE_URL + "/upsert", mapOf("task" to task.toPayload()))
+        request("$tasksBaseUrl/upsert", mapOf("task" to task.toPayload()))
         return loadTasks()
     }
 
-    fun verifyPhoto(taskId: String, base64Jpeg: String): VerificationResult {
-        val parsed = request(BuildConfig.MOTHER_VERIFY_URL, mapOf("taskId" to taskId, "imageBase64" to base64Jpeg))
+    suspend fun verifyPhoto(taskId: String, task: String, image: UploadImage): VerificationResult {
+        val parsed = requestPhotoVerify(verifyUrl, taskId, task, image)
         return VerificationResult(
             verified = parsed.verified == true,
-            message = parsed.message ?: if (parsed.verified == true) "인증 성공" else "인증 실패"
+            message = parsed.message ?: parsed.reason ?: if (parsed.verified == true) "인증 성공" else "인증 실패"
         )
     }
 
@@ -58,13 +64,22 @@ class RemoteStorage {
             is String -> v.toIntOrNull()
             else -> null
         }
+        fun boolFrom(v: Any?): Boolean = when (v) {
+            is Boolean -> v
+            is Number -> v.toInt() == 1
+            is String -> {
+                val normalized = v.trim()
+                normalized == "1" || normalized.equals("true", ignoreCase = true)
+            }
+            else -> false
+        }
 
         return Task(
             id = (map["id"] ?: "").toString(),
             title = (map["title"] ?: "").toString(),
             description = (map["description"] ?: "").toString(),
             dueDate = longOrNull(map["dueDate"]),
-            isCompleted = (map["isCompleted"] as? Boolean) == true || (map["isCompleted"] as? Number)?.toInt() == 1,
+            isCompleted = boolFrom(map["isCompleted"]),
             createdAt = longOrNull(map["createdAt"]) ?: System.currentTimeMillis(),
             completedAt = longOrNull(map["completedAt"]),
             priority = runCatching { TaskPriority.valueOf(((map["priority"] ?: "NORMAL").toString()).uppercase()) }.getOrDefault(TaskPriority.NORMAL),
@@ -86,16 +101,23 @@ class RemoteStorage {
         "estimatedMinutes" to estimatedMinutes
     )
 
+    data class UploadImage(
+        val filename: String,
+        val mimeType: String,
+        val bytes: ByteArray
+    )
+
     data class VerificationResult(val verified: Boolean, val message: String)
 
     private data class ApiResponse(
         val ok: Boolean = false,
         val tasks: List<Map<String, Any?>> = emptyList(),
         val verified: Boolean? = null,
-        val message: String? = null
+        val message: String? = null,
+        val reason: String? = null
     )
 
-    private fun request(url: String, payload: Map<String, Any?>): ApiResponse {
+    private suspend fun request(url: String, payload: Map<String, Any?>): ApiResponse = withContext(Dispatchers.IO) {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 10000
@@ -104,16 +126,108 @@ class RemoteStorage {
             setRequestProperty("Content-Type", "application/json")
         }
 
-        OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(gson.toJson(payload)) }
-        val code = conn.responseCode
-        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-        val responseText = stream?.bufferedReader(Charsets.UTF_8)?.use(BufferedReader::readText).orEmpty()
+        try {
+            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(gson.toJson(payload)) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val responseText = stream?.bufferedReader(Charsets.UTF_8)?.use(BufferedReader::readText).orEmpty()
 
-        if (code !in 200..299) throw IllegalStateException("API error ($code): $responseText")
+            if (code !in 200..299) throw IllegalStateException("API error ($code): $responseText")
 
-        val parsed = gson.fromJson(responseText, Array<ApiResponse>::class.java)?.firstOrNull()
-            ?: gson.fromJson(responseText, ApiResponse::class.java)
-        if (!parsed.ok) throw IllegalStateException("API failed: $responseText")
+            parseApiResponse(responseText, requireOk = true)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private suspend fun requestPhotoVerify(
+        url: String,
+        taskId: String,
+        task: String,
+        image: UploadImage
+    ): ApiResponse =
+        withContext(Dispatchers.IO) {
+            val boundary = "----SmartPetTodoBoundary${System.currentTimeMillis()}"
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 10000
+                readTimeout = 30000
+                doOutput = true
+                setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            }
+
+            try {
+                DataOutputStream(conn.outputStream).use { out ->
+                    writeTextPart(out, boundary, "task", task)
+                    writeTextPart(out, boundary, "taskId", taskId)
+                    writeFilePart(
+                        out = out,
+                        boundary = boundary,
+                        name = "image",
+                        filename = image.filename,
+                        contentType = image.mimeType,
+                        bytes = image.bytes
+                    )
+                    out.writeBytes("--$boundary--\r\n")
+                    out.flush()
+                }
+
+                val code = conn.responseCode
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                val responseText = stream?.bufferedReader(Charsets.UTF_8)?.use(BufferedReader::readText).orEmpty()
+
+                if (code !in 200..299) throw IllegalStateException("API error ($code): $responseText")
+                parseApiResponse(responseText, requireOk = false)
+            } finally {
+                conn.disconnect()
+            }
+        }
+
+    private fun parseApiResponse(responseText: String, requireOk: Boolean): ApiResponse {
+        if (responseText.isBlank()) throw IllegalStateException("API returned empty response")
+
+        val root = runCatching { com.google.gson.JsonParser.parseString(responseText) }
+            .getOrElse { throw IllegalStateException("Invalid API JSON: $responseText", it) }
+
+        val parsed = when {
+            root.isJsonArray -> {
+                val array = root.asJsonArray
+                if (array.size() == 0) throw IllegalStateException("API returned empty array response")
+                gson.fromJson(array[0], ApiResponse::class.java)
+            }
+
+            root.isJsonObject -> gson.fromJson(root, ApiResponse::class.java)
+            else -> throw IllegalStateException("Unexpected API response shape: $responseText")
+        }
+
+        if (requireOk && !parsed.ok) throw IllegalStateException("API failed: $responseText")
+        if (!requireOk && !parsed.ok && parsed.verified == null && parsed.message == null && parsed.reason == null) {
+            throw IllegalStateException("API failed: $responseText")
+        }
         return parsed
+    }
+
+    private fun writeTextPart(out: DataOutputStream, boundary: String, name: String, value: String) {
+        out.writeBytes("--$boundary\r\n")
+        out.writeBytes("Content-Disposition: form-data; name=\"$name\"\r\n")
+        out.writeBytes("\r\n")
+        out.write(value.toByteArray(Charsets.UTF_8))
+        out.writeBytes("\r\n")
+    }
+
+    private fun writeFilePart(
+        out: DataOutputStream,
+        boundary: String,
+        name: String,
+        filename: String,
+        contentType: String,
+        bytes: ByteArray
+    ) {
+        out.writeBytes("--$boundary\r\n")
+        out.writeBytes("Content-Disposition: form-data; name=\"$name\"; filename=\"$filename\"\r\n")
+        out.writeBytes("Content-Type: $contentType\r\n")
+        out.writeBytes("\r\n")
+        out.write(bytes)
+        out.writeBytes("\r\n")
     }
 }
