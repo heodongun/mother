@@ -29,10 +29,14 @@ android {
         versionName = "1.0"
 
         val dotEnv = loadDotEnv(rootProject.projectDir)
-        val motherBaseUrl = dotEnv["MOTHER_BASE_URL"]
-            ?: System.getenv("MOTHER_BASE_URL")
-            ?: "https://heodongun.com/webhook/mother"
-        buildConfigField("String", "MOTHER_BASE_URL", "\"$motherBaseUrl\"")
+        val motherTasksBaseUrl = dotEnv["MOTHER_TASKS_BASE_URL"]
+            ?: System.getenv("MOTHER_TASKS_BASE_URL")
+            ?: "https://heodongun.com/webhook/mother/tasks"
+        val motherVerifyUrl = dotEnv["MOTHER_VERIFY_URL"]
+            ?: System.getenv("MOTHER_VERIFY_URL")
+            ?: "https://heodongun.com/webhook/mother/verify-photo"
+        buildConfigField("String", "MOTHER_TASKS_BASE_URL", "\"$motherTasksBaseUrl\"")
+        buildConfigField("String", "MOTHER_VERIFY_URL", "\"$motherVerifyUrl\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

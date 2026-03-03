@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <application
         android:allowBackup="true"
@@ -23,6 +24,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+    
+        <activity
+            android:name=".ui.OverdueVerificationActivity"
+            android:exported="false"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.SmartPetTodo" />
+
+        <receiver
+            android:name=".alarm.OverdueAlarmReceiver"
+            android:exported="false" />
+
     </application>
 
 </manifest>
