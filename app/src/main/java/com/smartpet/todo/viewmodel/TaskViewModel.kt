@@ -3,7 +3,7 @@ package com.smartpet.todo.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.smartpet.todo.data.FileStorage
+import com.smartpet.todo.data.RemoteStorage
 import com.smartpet.todo.data.Task
 import com.smartpet.todo.data.TaskPriority
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,7 +25,7 @@ data class TaskUiState(
  */
 class TaskViewModel(application: Application) : AndroidViewModel(application) {
     
-    private val storage = FileStorage(application)
+    private val storage = RemoteStorage()
     
     private val _uiState = MutableStateFlow(TaskUiState())
     val uiState: StateFlow<TaskUiState> = _uiState.asStateFlow()

@@ -3,6 +3,20 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+fun loadDotEnv(rootDir: File): Map<String, String> {
+    val envFile = rootDir.resolve(".env")
+    if (!envFile.exists()) return emptyMap()
+    return envFile.readLines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+        .associate {
+            val idx = it.indexOf('=')
+            val k = it.substring(0, idx).trim()
+            val v = it.substring(idx + 1).trim().removeSurrounding("\"")
+            k to v
+        }
+}
+
 android {
     namespace = "com.smartpet.todo"
     compileSdk = 34
@@ -13,6 +27,12 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        val dotEnv = loadDotEnv(rootProject.projectDir)
+        val motherBaseUrl = dotEnv["MOTHER_BASE_URL"]
+            ?: System.getenv("MOTHER_BASE_URL")
+            ?: "https://heodongun.com/webhook/mother"
+        buildConfigField("String", "MOTHER_BASE_URL", "\"$motherBaseUrl\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -38,6 +58,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.5"
