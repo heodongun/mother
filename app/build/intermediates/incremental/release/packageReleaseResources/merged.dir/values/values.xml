@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="pet_angry">#F04452</color>
+    <color name="pet_chasing">#FF8A00</color>
+    <color name="pet_happy">#00C853</color>
+    <color name="pet_worried">#FFD600</color>
+    <color name="toss_black">#191F28</color>
+    <color name="toss_blue">#0064FF</color>
+    <color name="toss_blue_dark">#0050CC</color>
+    <color name="toss_blue_light">#4D94FF</color>
+    <color name="toss_gray_100">#E5E8EB</color>
+    <color name="toss_gray_300">#B0B8C1</color>
+    <color name="toss_gray_50">#F2F4F6</color>
+    <color name="toss_gray_500">#8B95A1</color>
+    <color name="toss_gray_700">#4E5968</color>
+    <color name="toss_gray_900">#333D4B</color>
+    <color name="toss_green">#00C853</color>
+    <color name="toss_orange">#FF8A00</color>
+    <color name="toss_red">#F04452</color>
+    <color name="toss_white">#FFFFFF</color>
+    <color name="toss_yellow">#FFD600</color>
+    <string name="add_task">할일 추가</string>
+    <string name="app_name">마더</string>
+    <string name="cancel">취소</string>
+    <string name="complete">완료</string>
+    <string name="delete">삭제</string>
+    <string name="edit_task">할일 수정</string>
+    <string name="no_tasks">할일이 없어요!\n새로운 할일을 추가해보세요 ✨</string>
+    <string name="pet_msg_angry">🏃 로봇이 쫓아오고 있어요!! 빨리 완료하세요!</string>
+    <string name="pet_msg_chasing">⚠️ 서두르세요! 제가 쫓아갈 수도…</string>
+    <string name="pet_msg_happy">오늘도 화이팅! 🐾</string>
+    <string name="pet_msg_worried">슬슬 시작해볼까요? 🐱</string>
+    <string name="pet_status">펫 상태</string>
+    <string name="save">저장</string>
+    <string name="task_description">설명 (선택)</string>
+    <string name="task_due_date">마감일</string>
+    <string name="task_title">제목</string>
+    <style name="Theme.SmartPetTodo" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/toss_white</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">@color/toss_white</item>
+    </style>
+</resources>

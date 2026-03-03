@@ -1,0 +1,22 @@
+[
+    {
+        "merged": "com.smartpet.todo.app-merged_res-47:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.smartpet.todo.app-main-48:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "com.smartpet.todo.app-merged_res-47:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.smartpet.todo.app-main-48:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "com.smartpet.todo.app-merged_res-47:/xml_data_extraction_rules.xml.flat",
+        "source": "com.smartpet.todo.app-main-48:/xml/data_extraction_rules.xml"
+    },
+    {
+        "merged": "com.smartpet.todo.app-merged_res-47:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.smartpet.todo.app-main-48:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "com.smartpet.todo.app-merged_res-47:/xml_backup_rules.xml.flat",
+        "source": "com.smartpet.todo.app-main-48:/xml/backup_rules.xml"
+    }
+]

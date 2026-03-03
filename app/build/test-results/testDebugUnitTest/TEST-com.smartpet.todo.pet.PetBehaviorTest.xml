@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.smartpet.todo.pet.PetBehaviorTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-02-14T13:54:12" hostname="MacBook-Pro.local" time="0.006">
+  <properties/>
+  <testcase name="getOverdueCount_countsOnlyOverdueIncompleteTasks" classname="com.smartpet.todo.pet.PetBehaviorTest" time="0.005"/>
+  <testcase name="calculatePetState_noIncompleteTasks_isHappy" classname="com.smartpet.todo.pet.PetBehaviorTest" time="0.0"/>
+  <testcase name="calculatePetState_picksHighestInterventionLevel" classname="com.smartpet.todo.pet.PetBehaviorTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
