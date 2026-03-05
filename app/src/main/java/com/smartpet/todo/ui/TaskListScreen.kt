@@ -1,5 +1,10 @@
 package com.smartpet.todo.ui
 
+import android.content.ContentResolver
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,7 +44,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import com.smartpet.todo.data.RemoteStorage
 import com.smartpet.todo.data.Task
 import com.smartpet.todo.data.TaskPriority
 import com.smartpet.todo.pet.PetBehavior
@@ -47,8 +54,11 @@ import com.smartpet.todo.ui.components.PetStatusCard
 import com.smartpet.todo.ui.components.TaskCard
 import com.smartpet.todo.ui.components.TaskEditorDialog
 import com.smartpet.todo.viewmodel.TaskUiState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.URLConnection
 
 /**
  * Main task list screen with pet status and task items
@@ -66,7 +76,45 @@ fun TaskListScreen(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val storage = remember { RemoteStorage() }
     val snackbarHostState = remember { SnackbarHostState() }
+    var pendingVerifyTask by remember { mutableStateOf<Task?>(null) }
+    var verifyingTaskId by remember { mutableStateOf<String?>(null) }
+
+    val verifyPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        val task = pendingVerifyTask
+        if (task == null || uri == null) {
+            pendingVerifyTask = null
+            return@rememberLauncherForActivityResult
+        }
+
+        scope.launch {
+            verifyingTaskId = task.id
+            val uploadImage = withContext(Dispatchers.IO) { readUploadImage(context.contentResolver, uri) }
+            if (uploadImage == null) {
+                snackbarHostState.showSnackbar("이미지 파일을 읽을 수 없어요.")
+                verifyingTaskId = null
+                pendingVerifyTask = null
+                return@launch
+            }
+
+            val taskPayload = buildTaskPayload(task.title, task.description)
+            runCatching { storage.verifyPhoto(task.id, taskPayload, uploadImage) }
+                .onSuccess { result ->
+                    snackbarHostState.showSnackbar(result.message)
+                    if (result.verified) {
+                        onToggleComplete(task.id)
+                    }
+                }
+                .onFailure { error ->
+                    snackbarHostState.showSnackbar("인증 실패: ${error.message ?: "알 수 없는 오류"}")
+                }
+
+            verifyingTaskId = null
+            pendingVerifyTask = null
+        }
+    }
 
     // Recompose periodically so due/urgency updates without user interaction.
     val nowMillis by produceState(initialValue = System.currentTimeMillis()) {
@@ -217,6 +265,17 @@ fun TaskListScreen(
                                 isEditorOpen = true
                             },
                             onToggleComplete = onToggleComplete,
+                            onVerifyTask = { task ->
+                                pendingVerifyTask = task
+                                runCatching { verifyPickerLauncher.launch(arrayOf("image/*")) }
+                                    .onFailure { error ->
+                                        pendingVerifyTask = null
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("파일 선택 실패: ${error.message ?: "권한 오류"}")
+                                        }
+                                    }
+                            },
+                            verifyingTaskId = verifyingTaskId,
                             onRequestDelete = { task -> pendingDelete = task },
                             modifier = Modifier
                                 .fillMaxHeight()
@@ -253,6 +312,17 @@ fun TaskListScreen(
                             isEditorOpen = true
                         },
                         onToggleComplete = onToggleComplete,
+                        onVerifyTask = { task ->
+                            pendingVerifyTask = task
+                            runCatching { verifyPickerLauncher.launch(arrayOf("image/*")) }
+                                .onFailure { error ->
+                                    pendingVerifyTask = null
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("파일 선택 실패: ${error.message ?: "권한 오류"}")
+                                    }
+                                }
+                        },
+                        verifyingTaskId = verifyingTaskId,
                         onRequestDelete = { task -> pendingDelete = task },
                         modifier = Modifier.weight(1f)
                     )
@@ -426,6 +496,8 @@ private fun TasksList(
     listState: androidx.compose.foundation.lazy.LazyListState,
     onTaskClick: (Task) -> Unit,
     onToggleComplete: (String) -> Unit,
+    onVerifyTask: (Task) -> Unit,
+    verifyingTaskId: String?,
     onRequestDelete: (Task) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -484,6 +556,8 @@ private fun TasksList(
                     task = task,
                     nowMillis = nowMillis,
                     onToggleComplete = { onToggleComplete(task.id) },
+                    onVerify = { onVerifyTask(task) },
+                    isVerifying = verifyingTaskId == task.id,
                     onDelete = { onRequestDelete(task) },
                     onClick = { onTaskClick(task) }
                 )
@@ -506,6 +580,8 @@ private fun TasksList(
                     task = task,
                     nowMillis = nowMillis,
                     onToggleComplete = { onToggleComplete(task.id) },
+                    onVerify = null,
+                    isVerifying = false,
                     onDelete = { onRequestDelete(task) },
                     onClick = { onTaskClick(task) }
                 )
@@ -516,4 +592,33 @@ private fun TasksList(
             Spacer(modifier = Modifier.height(10.dp))
         }
     }
+}
+
+private fun readUploadImage(contentResolver: ContentResolver, uri: Uri): RemoteStorage.UploadImage? {
+    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
+    if (bytes.isEmpty()) return null
+
+    val name = queryDisplayName(contentResolver, uri) ?: "upload.jpg"
+    val mimeType = contentResolver.getType(uri)
+        ?: URLConnection.guessContentTypeFromName(name)
+        ?: "application/octet-stream"
+
+    return RemoteStorage.UploadImage(
+        filename = name,
+        mimeType = mimeType,
+        bytes = bytes
+    )
+}
+
+private fun queryDisplayName(contentResolver: ContentResolver, uri: Uri): String? {
+    return contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+    }
+}
+
+private fun buildTaskPayload(title: String, description: String): String {
+    return listOf(title.trim(), description.trim())
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
 }

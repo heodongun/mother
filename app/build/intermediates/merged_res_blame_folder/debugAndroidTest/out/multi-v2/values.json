@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.smartpet.todo.test.app-mergeDebugAndroidTestResources-32:/values/values.xml",
+            "outputFile": "com.smartpet.todo.test.app-mergeDebugAndroidTestResources-1:/values/values.xml",
             "map": [
                 {
                     "source": "/Users/heodongun/.gradle/caches/transforms-3/933fc669f3d08024dc2b6e4f5434149f/transformed/activity-1.8.1/res/values/values.xml",

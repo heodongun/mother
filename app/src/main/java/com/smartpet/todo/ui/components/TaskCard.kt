@@ -44,6 +44,8 @@ fun TaskCard(
     task: Task,
     nowMillis: Long,
     onToggleComplete: () -> Unit,
+    onVerify: (() -> Unit)?,
+    isVerifying: Boolean,
     onDelete: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -193,17 +195,44 @@ fun TaskCard(
                 }
             }
             
-            // Delete button
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier.graphicsLayer(alpha = 0.6f)
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Delete,
-                    contentDescription = "삭제",
-                    tint = TossColors.Gray500,
-                    modifier = Modifier.size(20.dp)
-                )
+                if (!task.isCompleted && onVerify != null) {
+                    if (isVerifying) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .padding(end = 8.dp),
+                            strokeWidth = 2.dp,
+                            color = TossColors.Blue
+                        )
+                    } else {
+                        TextButton(
+                            onClick = onVerify,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) {
+                            Text(
+                                text = "인증하기",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.graphicsLayer(alpha = 0.6f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Delete,
+                        contentDescription = "삭제",
+                        tint = TossColors.Gray500,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }
