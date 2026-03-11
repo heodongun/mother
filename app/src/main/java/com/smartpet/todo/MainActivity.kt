@@ -52,7 +52,8 @@ class MainActivity : ComponentActivity() {
                             viewModel.deleteTask(taskId)
                         },
                         onRestoreTask = viewModel::restoreTask,
-                        onRefresh = viewModel::refresh
+                        onRefresh = viewModel::refresh,
+                        onCreateFromGoal = viewModel::createTasksFromGoal
                     )
                 }
             }

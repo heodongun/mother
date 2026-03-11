@@ -7,6 +7,7 @@ import com.smartpet.todo.alarm.OverdueScheduler
 import com.smartpet.todo.data.RemoteStorage
 import com.smartpet.todo.data.Task
 import com.smartpet.todo.data.TaskPriority
+import com.smartpet.todo.workflow.AutonomousWorkflowEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -117,6 +118,37 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             runCatching { storage.upsertTask(normalized) }
+                .onSuccess { tasks ->
+                    _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
+                    OverdueScheduler.scheduleAll(appContext, tasks)
+                }
+                .onFailure(::handleFailure)
+        }
+    }
+
+    fun createTasksFromGoal(goal: String) {
+        viewModelScope.launch {
+            val drafts = AutonomousWorkflowEngine.decomposeGoal(goal)
+            if (drafts.isEmpty()) {
+                _uiState.value = _uiState.value.copy(errorMessage = "목표를 입력해주세요.")
+                return@launch
+            }
+
+            runCatching {
+                drafts.forEach { draft ->
+                    storage.addTask(
+                        Task(
+                            title = draft.title,
+                            description = draft.description,
+                            dueDate = draft.dueDate,
+                            priority = draft.priority,
+                            maxEnforcementLevel = draft.maxEnforcementLevel,
+                            estimatedMinutes = draft.estimatedMinutes
+                        )
+                    )
+                }
+                storage.loadTasks()
+            }
                 .onSuccess { tasks ->
                     _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
                     OverdueScheduler.scheduleAll(appContext, tasks)
