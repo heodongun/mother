@@ -73,6 +73,7 @@ fun TaskListScreen(
     onDeleteTask: (String) -> Unit,
     onRestoreTask: (Task) -> Unit,
     onRefresh: () -> Unit,
+    onCreateFromGoal: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -129,6 +130,8 @@ fun TaskListScreen(
     }
 
     var filter by rememberSaveable { mutableStateOf(TaskFilter.ACTIVE) }
+    var goalInput by rememberSaveable { mutableStateOf("") }
+    var isAutonomousSubmitting by rememberSaveable { mutableStateOf(false) }
     var editorTask by remember { mutableStateOf<Task?>(null) }
     var isEditorOpen by rememberSaveable { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<Task?>(null) }
@@ -173,6 +176,31 @@ fun TaskListScreen(
                     }
                 },
                 actions = {
+                    OutlinedTextField(
+                        value = goalInput,
+                        onValueChange = { goalInput = it },
+                        placeholder = { Text("CEO 목표 입력") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .widthIn(min = 160.dp, max = 280.dp)
+                            .testTag("goal_input")
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        enabled = !isAutonomousSubmitting,
+                        onClick = {
+                            val trimmed = goalInput.trim()
+                            if (trimmed.isNotEmpty()) {
+                                isAutonomousSubmitting = true
+                                onCreateFromGoal(trimmed)
+                                goalInput = ""
+                                isAutonomousSubmitting = false
+                            }
+                        },
+                        modifier = Modifier.testTag("goal_submit_button")
+                    ) {
+                        Text("자동 분해")
+                    }
                     IconButton(
                         onClick = onRefresh,
                         modifier = Modifier.testTag("refresh_button")
