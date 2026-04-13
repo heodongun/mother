@@ -7,6 +7,11 @@ import com.smartpet.todo.alarm.OverdueScheduler
 import com.smartpet.todo.data.RemoteStorage
 import com.smartpet.todo.data.Task
 import com.smartpet.todo.data.TaskPriority
+import com.smartpet.todo.penalty.PenaltyDraft
+import com.smartpet.todo.penalty.PenaltyManager
+import com.smartpet.todo.penalty.PenaltyProfile
+import com.smartpet.todo.penalty.PenaltyRuntimeStatus
+import com.smartpet.todo.penalty.PenaltySettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,12 +21,16 @@ import kotlinx.coroutines.launch
 data class TaskUiState(
     val tasks: List<Task> = emptyList(),
     val isLoading: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val penaltySettings: PenaltySettings = PenaltySettings(),
+    val penaltyProfiles: Map<String, PenaltyProfile> = emptyMap(),
+    val penaltyRuntimeStatus: PenaltyRuntimeStatus = PenaltyRuntimeStatus()
 )
 
 class TaskViewModel(application: Application) : AndroidViewModel(application) {
     private val storage = RemoteStorage()
     private val appContext = application.applicationContext
+    private val penaltyManager = PenaltyManager(appContext)
 
     private val _uiState = MutableStateFlow(TaskUiState())
     val uiState: StateFlow<TaskUiState> = _uiState.asStateFlow()
@@ -31,13 +40,39 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun refresh() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            val settings = penaltyManager.loadSettings()
+            val profiles = penaltyManager.loadProfiles()
+            val runtimeStatus = penaltyManager.runtimeStatus()
             runCatching { storage.loadTasks() }
                 .onSuccess { tasks ->
-                    _uiState.value = _uiState.value.copy(tasks = tasks, isLoading = false, errorMessage = null)
+                    _uiState.value = _uiState.value.copy(
+                        tasks = tasks,
+                        isLoading = false,
+                        errorMessage = null,
+                        penaltySettings = settings,
+                        penaltyProfiles = profiles,
+                        penaltyRuntimeStatus = runtimeStatus
+                    )
                     OverdueScheduler.scheduleAll(appContext, tasks)
                 }
-                .onFailure(::handleFailure)
+                .onFailure { error ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        penaltySettings = settings,
+                        penaltyProfiles = profiles,
+                        penaltyRuntimeStatus = runtimeStatus
+                    )
+                    handleFailure(error)
+                }
         }
+    }
+
+    fun savePenaltySettings(settings: PenaltySettings) {
+        penaltyManager.saveSettings(settings)
+        _uiState.value = _uiState.value.copy(
+            penaltySettings = settings,
+            penaltyRuntimeStatus = penaltyManager.runtimeStatus()
+        )
     }
 
     fun addTask(
@@ -46,7 +81,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         dueDate: Long?,
         priority: TaskPriority,
         maxEnforcementLevel: Int,
-        estimatedMinutes: Int?
+        estimatedMinutes: Int?,
+        penaltyDraft: PenaltyDraft
     ) {
         viewModelScope.launch {
             val normalizedTitle = title.trim()
@@ -65,14 +101,26 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             )
             runCatching { storage.addTask(task) }
                 .onSuccess { tasks ->
-                    _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
+                    penaltyManager.saveProfile(
+                        PenaltyProfile(
+                            taskId = task.id,
+                            selectionMode = penaltyDraft.selectionMode,
+                            manualPenaltyType = penaltyDraft.manualPenaltyType
+                        )
+                    )
+                    _uiState.value = _uiState.value.copy(
+                        tasks = tasks,
+                        errorMessage = null,
+                        penaltyProfiles = penaltyManager.loadProfiles(),
+                        penaltyRuntimeStatus = penaltyManager.runtimeStatus()
+                    )
                     OverdueScheduler.scheduleAll(appContext, tasks)
                 }
                 .onFailure(::handleFailure)
         }
     }
 
-    fun updateTask(task: Task) {
+    fun updateTask(task: Task, penaltyDraft: PenaltyDraft) {
         viewModelScope.launch {
             val normalized = normalizeTaskOrNull(task) ?: run {
                 _uiState.value = _uiState.value.copy(errorMessage = "제목을 입력해주세요.")
@@ -80,7 +128,19 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             }
             runCatching { storage.updateTask(normalized) }
                 .onSuccess { tasks ->
-                    _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
+                    penaltyManager.saveProfile(
+                        PenaltyProfile(
+                            taskId = normalized.id,
+                            selectionMode = penaltyDraft.selectionMode,
+                            manualPenaltyType = penaltyDraft.manualPenaltyType
+                        )
+                    )
+                    _uiState.value = _uiState.value.copy(
+                        tasks = tasks,
+                        errorMessage = null,
+                        penaltyProfiles = penaltyManager.loadProfiles(),
+                        penaltyRuntimeStatus = penaltyManager.runtimeStatus()
+                    )
                     OverdueScheduler.scheduleAll(appContext, tasks)
                 }
                 .onFailure(::handleFailure)
@@ -92,7 +152,12 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             OverdueScheduler.cancel(appContext, taskId)
             runCatching { storage.deleteTask(taskId) }
                 .onSuccess { tasks ->
-                    _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
+                    penaltyManager.clearTrigger(taskId)
+                    _uiState.value = _uiState.value.copy(
+                        tasks = tasks,
+                        errorMessage = null,
+                        penaltyRuntimeStatus = penaltyManager.runtimeStatus()
+                    )
                     OverdueScheduler.scheduleAll(appContext, tasks)
                 }
                 .onFailure(::handleFailure)
@@ -103,7 +168,12 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             runCatching { storage.toggleTaskCompletion(taskId) }
                 .onSuccess { tasks ->
-                    _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
+                    penaltyManager.clearTrigger(taskId)
+                    _uiState.value = _uiState.value.copy(
+                        tasks = tasks,
+                        errorMessage = null,
+                        penaltyRuntimeStatus = penaltyManager.runtimeStatus()
+                    )
                     OverdueScheduler.scheduleAll(appContext, tasks)
                 }
                 .onFailure(::handleFailure)
@@ -118,7 +188,11 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             }
             runCatching { storage.upsertTask(normalized) }
                 .onSuccess { tasks ->
-                    _uiState.value = _uiState.value.copy(tasks = tasks, errorMessage = null)
+                    _uiState.value = _uiState.value.copy(
+                        tasks = tasks,
+                        errorMessage = null,
+                        penaltyRuntimeStatus = penaltyManager.runtimeStatus()
+                    )
                     OverdueScheduler.scheduleAll(appContext, tasks)
                 }
                 .onFailure(::handleFailure)

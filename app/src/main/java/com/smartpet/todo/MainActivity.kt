@@ -2,22 +2,23 @@ package com.smartpet.todo
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.os.Bundle
 import android.os.Build
+import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
-import com.smartpet.todo.ui.TaskListScreen
 import com.smartpet.todo.ui.SmartPetTodoTheme
+import com.smartpet.todo.ui.TaskListScreen
 import com.smartpet.todo.viewmodel.TaskViewModel
 
 class MainActivity : ComponentActivity() {
@@ -32,25 +33,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
+
         setContent {
             SmartPetTodoTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background
                 ) {
                     val uiState by viewModel.uiState.collectAsState()
-                    
                     TaskListScreen(
                         uiState = uiState,
                         onAddTask = viewModel::addTask,
                         onUpdateTask = viewModel::updateTask,
-                        onToggleComplete = { taskId ->
-                            viewModel.toggleTaskCompletion(taskId)
-                        },
-                        onDeleteTask = { taskId ->
-                            viewModel.deleteTask(taskId)
-                        },
+                        onSavePenaltySettings = viewModel::savePenaltySettings,
+                        onToggleComplete = viewModel::toggleTaskCompletion,
+                        onDeleteTask = viewModel::deleteTask,
                         onRestoreTask = viewModel::restoreTask,
                         onRefresh = viewModel::refresh
                     )

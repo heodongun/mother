@@ -16,10 +16,11 @@ import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.OnBackPressedCallback
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -28,8 +29,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,11 +40,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -57,6 +60,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.smartpet.todo.R
 import com.smartpet.todo.data.RemoteStorage
+import com.smartpet.todo.data.Task
+import com.smartpet.todo.penalty.PenaltyManager
+import com.smartpet.todo.penalty.PenaltyResolution
+import com.smartpet.todo.penalty.toPresentation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -72,6 +79,10 @@ class OverdueVerificationActivity : ComponentActivity() {
     private var taskId: String = ""
     private var taskTitle: String = ""
     private var taskDescription: String = ""
+    private var resolution: PenaltyResolution? = null
+    private var isResolved = false
+    private val penaltyManager by lazy { PenaltyManager(applicationContext) }
+
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
@@ -84,18 +95,29 @@ class OverdueVerificationActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setShowWhenLocked(true)
-        setTurnScreenOn(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        }
 
         taskId = intent.getStringExtra("taskId").orEmpty()
         taskTitle = intent.getStringExtra("taskTitle").orEmpty()
         taskDescription = intent.getStringExtra("taskDescription").orEmpty()
-        val storage = RemoteStorage()
-
         ensureNotificationChannel()
+        installBackBlocker()
+
+        val task = Task(id = taskId, title = taskTitle.ifBlank { "할 일" }, description = taskDescription)
+        resolution = penaltyManager.resolve(task, penaltyManager.loadProfiles()[taskId])
 
         setContent {
+            val currentResolution = resolution
             var loading by remember { mutableStateOf(false) }
+            var bannerMessage by remember(currentResolution) {
+                mutableStateOf(currentResolution?.toPresentation()?.detail ?: "인증을 완료할 때까지 이 화면을 유지합니다.")
+            }
             val infiniteTransition = rememberInfiniteTransition(label = "overdue-alert")
             val warningOverlayAlpha by infiniteTransition.animateFloat(
                 initialValue = 0.2f,
@@ -120,6 +142,7 @@ class OverdueVerificationActivity : ComponentActivity() {
                 if (uri == null) return@rememberLauncherForActivityResult
                 loading = true
                 lifecycleScope.launch {
+                    val storage = RemoteStorage()
                     val uploadImage = withContext(Dispatchers.IO) { readUploadImage(uri) }
                     if (uploadImage == null) {
                         loading = false
@@ -129,20 +152,25 @@ class OverdueVerificationActivity : ComponentActivity() {
 
                     val taskPayload = buildTaskPayload(taskTitle, taskDescription)
                     runCatching { storage.verifyPhoto(taskId, taskPayload, uploadImage) }
-                        .onSuccess {
+                        .onSuccess { verifyResult ->
                             loading = false
-                            Toast.makeText(this@OverdueVerificationActivity, it.message, Toast.LENGTH_SHORT).show()
-                            if (it.verified) {
+                            bannerMessage = verifyResult.message
+                            Toast.makeText(this@OverdueVerificationActivity, verifyResult.message, Toast.LENGTH_SHORT).show()
+                            if (verifyResult.verified) {
+                                runCatching { storage.toggleTaskCompletion(taskId) }
+                                isResolved = true
+                                penaltyManager.clearTrigger(taskId)
+                                penaltyManager.stopLockTaskIfNeeded(this@OverdueVerificationActivity, currentResolution)
                                 stopSiren()
                                 stopWarningNotifications(cancelNotice = true)
-                                runCatching { storage.toggleTaskCompletion(taskId) }
                                 finish()
                             }
                         }
                         .onFailure {
                             loading = false
-                            Toast.makeText(this@OverdueVerificationActivity, "인증 실패: ${it.message}", Toast.LENGTH_SHORT).show()
-                    }
+                            bannerMessage = "인증 실패: ${it.message ?: "알 수 없는 오류"}"
+                            Toast.makeText(this@OverdueVerificationActivity, bannerMessage, Toast.LENGTH_SHORT).show()
+                        }
                 }
             }
 
@@ -151,10 +179,7 @@ class OverdueVerificationActivity : ComponentActivity() {
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            listOf(
-                                Color(0xFF140607),
-                                Color(0xFF050505)
-                            )
+                            listOf(Color(0xFF140607), Color(0xFF050505))
                         )
                     )
             ) {
@@ -179,7 +204,7 @@ class OverdueVerificationActivity : ComponentActivity() {
                         modifier = Modifier.offset(x = warningOffsetX.dp)
                     )
                     Text(
-                        text = "로봇이 쫓아오고 있어요",
+                        text = currentResolution?.toPresentation()?.label ?: "인증 고정",
                         color = Color.White,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
@@ -218,14 +243,23 @@ class OverdueVerificationActivity : ComponentActivity() {
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             }
+                            Text(
+                                text = bannerMessage,
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            currentResolution?.blockedReason?.let {
+                                Text(
+                                    text = "주의: $it",
+                                    color = Color(0xFFFFB4B4),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
                         }
                     }
 
                     if (loading) {
-                        CircularProgressIndicator(
-                            color = Color(0xFFFF6B6B),
-                            modifier = Modifier.padding(top = 24.dp)
-                        )
+                        CircularProgressIndicator(color = Color(0xFFFF6B6B), modifier = Modifier.padding(top = 24.dp))
                         Text(
                             text = "사진 분석 중... 잠시만 기다려주세요",
                             color = Color.White,
@@ -257,16 +291,13 @@ class OverdueVerificationActivity : ComponentActivity() {
                         }
                     }
 
-                    OutlinedButton(
-                        onClick = { finish() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFFF8A8A)),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFFD5D5))
-                    ) {
-                        Text("잠시 후 다시 시도")
-                    }
+                    Text(
+                        text = "뒤로가기와 임시 닫기는 막혀 있어요. 인증 성공 전에는 완료로 처리되지 않습니다.",
+                        color = Color(0xFFFFD5D5),
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 18.dp)
+                    )
                 }
             }
         }
@@ -277,17 +308,30 @@ class OverdueVerificationActivity : ComponentActivity() {
         ensureNotificationPermission()
         startSiren()
         startWarningNotifications()
+        triggerPenaltyOnce()
     }
 
     override fun onStop() {
-        stopWarningNotifications(cancelNotice = true)
+        stopWarningNotifications(cancelNotice = isResolved)
         stopSiren()
         super.onStop()
     }
 
+    private fun triggerPenaltyOnce() {
+        val task = Task(id = taskId, title = taskTitle.ifBlank { "할 일" }, description = taskDescription)
+        val resolved = resolution ?: return
+        val result = penaltyManager.triggerIfNeeded(this, task, resolved)
+        Toast.makeText(this, result.userMessage, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun installBackBlocker() {
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() = Unit
+        })
+    }
+
     private fun startSiren() {
         if (sirenJob != null) return
-
         toneGenerator = ToneGenerator(AudioManager.STREAM_ALARM, 100)
         sirenJob = lifecycleScope.launch {
             while (isActive) {
@@ -336,10 +380,10 @@ class OverdueVerificationActivity : ComponentActivity() {
             setSound(alarmSound, attrs)
         }
 
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(channel)
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
+    @android.annotation.SuppressLint("MissingPermission")
     private fun startWarningNotifications() {
         if (warningNotificationJob != null) return
         if (!canPostNotifications()) return
@@ -361,10 +405,7 @@ class OverdueVerificationActivity : ComponentActivity() {
             while (isActive) {
                 if (canPostNotifications()) {
                     val message = warnings[index % warnings.size]
-                    manager.notify(
-                        CHASE_NOTIFICATION_ID,
-                        buildWarningNotification(message)
-                    )
+                    runCatching { manager.notify(CHASE_NOTIFICATION_ID, buildWarningNotification(message)) }
                     index++
                 }
                 delay(1_000L)
@@ -397,12 +438,7 @@ class OverdueVerificationActivity : ComponentActivity() {
         }
 
         val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            taskId.hashCode(),
-            openIntent,
-            pendingIntentFlags
-        )
+        val pendingIntent = PendingIntent.getActivity(this, taskId.hashCode(), openIntent, pendingIntentFlags)
 
         return NotificationCompat.Builder(this, CHASE_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -438,11 +474,7 @@ private fun OverdueVerificationActivity.readUploadImage(uri: Uri): RemoteStorage
         ?: URLConnection.guessContentTypeFromName(name)
         ?: "application/octet-stream"
 
-    return RemoteStorage.UploadImage(
-        filename = name,
-        mimeType = mimeType,
-        bytes = bytes
-    )
+    return RemoteStorage.UploadImage(filename = name, mimeType = mimeType, bytes = bytes)
 }
 
 private fun OverdueVerificationActivity.queryDisplayName(uri: Uri): String? {
