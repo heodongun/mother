@@ -35,6 +35,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +55,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.smartpet.todo.data.Task
 import com.smartpet.todo.data.TaskPriority
+import com.smartpet.todo.penalty.PenaltyDraft
+import com.smartpet.todo.penalty.PenaltyProfile
+import com.smartpet.todo.penalty.PenaltyRuntimeStatus
+import com.smartpet.todo.penalty.PenaltySelectionMode
+import com.smartpet.todo.penalty.PenaltySelector
+import com.smartpet.todo.penalty.PenaltySettings
+import com.smartpet.todo.penalty.PenaltyType
 import com.smartpet.todo.ui.TossColors
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -63,6 +71,9 @@ import java.util.Locale
 @Composable
 fun TaskEditorDialog(
     initialTask: Task?,
+    initialPenaltyProfile: PenaltyProfile?,
+    penaltySettings: PenaltySettings,
+    penaltyRuntimeStatus: PenaltyRuntimeStatus,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -70,7 +81,8 @@ fun TaskEditorDialog(
         dueDate: Long?,
         priority: TaskPriority,
         maxEnforcementLevel: Int,
-        estimatedMinutes: Int?
+        estimatedMinutes: Int?,
+        penaltyDraft: PenaltyDraft
     ) -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -85,6 +97,9 @@ fun TaskEditorDialog(
         ) {
             TaskEditorContent(
                 initialTask = initialTask,
+                initialPenaltyProfile = initialPenaltyProfile,
+                penaltySettings = penaltySettings,
+                penaltyRuntimeStatus = penaltyRuntimeStatus,
                 onDismiss = onDismiss,
                 onSave = onSave,
                 modifier = Modifier.padding(24.dp)
@@ -92,10 +107,13 @@ fun TaskEditorDialog(
         }
     }
 }
-
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun TaskEditorContent(
     initialTask: Task?,
+    initialPenaltyProfile: PenaltyProfile?,
+    penaltySettings: PenaltySettings,
+    penaltyRuntimeStatus: PenaltyRuntimeStatus,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -103,7 +121,8 @@ fun TaskEditorContent(
         dueDate: Long?,
         priority: TaskPriority,
         maxEnforcementLevel: Int,
-        estimatedMinutes: Int?
+        estimatedMinutes: Int?,
+        penaltyDraft: PenaltyDraft
     ) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -115,10 +134,36 @@ fun TaskEditorContent(
     var estimatedMinutesRaw by remember(initialTask?.id) {
         mutableStateOf(initialTask?.estimatedMinutes?.toString().orEmpty())
     }
+    var selectionMode by remember(initialTask?.id) {
+        mutableStateOf(initialPenaltyProfile?.selectionMode ?: PenaltySelectionMode.AUTO)
+    }
+    var manualPenaltyType by remember(initialTask?.id) {
+        mutableStateOf(initialPenaltyProfile?.manualPenaltyType)
+    }
 
     var showDatePicker by remember { mutableStateOf(false) }
-
     val scroll = rememberScrollState()
+
+    val previewTask = remember(title, description, dueDate, priority, maxEnforcementLevel, estimatedMinutesRaw) {
+        Task(
+            id = initialTask?.id ?: "draft",
+            title = title.ifBlank { "임시 제목" },
+            description = description,
+            dueDate = dueDate,
+            priority = priority,
+            maxEnforcementLevel = maxEnforcementLevel.coerceIn(1, 3),
+            estimatedMinutes = estimatedMinutesRaw.toIntOrNull()
+        )
+    }
+    val recommendation = remember(previewTask, penaltySettings, penaltyRuntimeStatus) {
+        PenaltySelector.recommend(previewTask, penaltySettings, penaltyRuntimeStatus)
+    }
+
+    LaunchedEffect(selectionMode) {
+        if (selectionMode == PenaltySelectionMode.AUTO) {
+            manualPenaltyType = null
+        }
+    }
 
     Column(
         modifier = modifier
@@ -239,10 +284,7 @@ fun TaskEditorContent(
                 )
                 OutlinedTextField(
                     value = estimatedMinutesRaw,
-                    onValueChange = { v ->
-                        // Keep it numeric-ish; allow empty.
-                        estimatedMinutesRaw = v.filter { it.isDigit() }.take(4)
-                    },
+                    onValueChange = { v -> estimatedMinutesRaw = v.filter { it.isDigit() }.take(4) },
                     placeholder = { Text("예: 25") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
@@ -274,21 +316,9 @@ fun TaskEditorContent(
         )
         Spacer(modifier = Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PriorityChip(
-                label = "낮음",
-                selected = priority == TaskPriority.LOW,
-                onClick = { priority = TaskPriority.LOW }
-            )
-            PriorityChip(
-                label = "보통",
-                selected = priority == TaskPriority.NORMAL,
-                onClick = { priority = TaskPriority.NORMAL }
-            )
-            PriorityChip(
-                label = "높음",
-                selected = priority == TaskPriority.HIGH,
-                onClick = { priority = TaskPriority.HIGH }
-            )
+            PriorityChip("낮음", priority == TaskPriority.LOW) { priority = TaskPriority.LOW }
+            PriorityChip("보통", priority == TaskPriority.NORMAL) { priority = TaskPriority.NORMAL }
+            PriorityChip("높음", priority == TaskPriority.HIGH) { priority = TaskPriority.HIGH }
         }
 
         Spacer(modifier = Modifier.height(18.dp))
@@ -307,21 +337,70 @@ fun TaskEditorContent(
         )
         Spacer(modifier = Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            EnforcementChip(
-                label = "알림",
-                selected = maxEnforcementLevel == 1,
-                onClick = { maxEnforcementLevel = 1 }
+            EnforcementChip("알림", maxEnforcementLevel == 1) { maxEnforcementLevel = 1 }
+            EnforcementChip("조명", maxEnforcementLevel == 2) { maxEnforcementLevel = 2 }
+            EnforcementChip("전원/로봇", maxEnforcementLevel == 3) { maxEnforcementLevel = 3 }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Text(
+            text = "미이행 시 벌칙",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "자동 추천은 작업 성격을 읽고 디바이스 잠금이 역효과인 경우를 피합니다.",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = selectionMode == PenaltySelectionMode.AUTO,
+                onClick = { selectionMode = PenaltySelectionMode.AUTO },
+                label = { Text("자동 추천") }
             )
-            EnforcementChip(
-                label = "조명",
-                selected = maxEnforcementLevel == 2,
-                onClick = { maxEnforcementLevel = 2 }
+            FilterChip(
+                selected = selectionMode == PenaltySelectionMode.MANUAL,
+                onClick = { selectionMode = PenaltySelectionMode.MANUAL },
+                label = { Text("수동 지정") }
             )
-            EnforcementChip(
-                label = "전원/로봇",
-                selected = maxEnforcementLevel == 3,
-                onClick = { maxEnforcementLevel = 3 }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "자동 추천: ${recommendation.type.toKoreanLabel()} · ${recommendation.reason}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        recommendation.blockedReason?.let {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
             )
+        }
+
+        if (selectionMode == PenaltySelectionMode.MANUAL) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ManualPenaltyChipRow(
+                    manualPenaltyType = manualPenaltyType,
+                    onSelect = { manualPenaltyType = it }
+                )
+                manualPenaltyType?.let { selectedType ->
+                    PenaltySelector.blockedReason(selectedType, penaltySettings, penaltyRuntimeStatus)?.let { blocked ->
+                        Text(
+                            text = blocked,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(22.dp))
@@ -342,7 +421,6 @@ fun TaskEditorContent(
                 onClick = {
                     val trimmedTitle = title.trim()
                     if (trimmedTitle.isBlank()) return@Button
-
                     val parsedMinutes = estimatedMinutesRaw.toIntOrNull()?.takeIf { it > 0 }?.coerceAtMost(24 * 60)
                     onSave(
                         trimmedTitle,
@@ -350,7 +428,8 @@ fun TaskEditorContent(
                         dueDate,
                         priority,
                         maxEnforcementLevel.coerceIn(1, 3),
-                        parsedMinutes
+                        parsedMinutes,
+                        PenaltyDraft(selectionMode = selectionMode, manualPenaltyType = manualPenaltyType)
                     )
                 },
                 enabled = title.trim().isNotBlank(),
@@ -358,16 +437,9 @@ fun TaskEditorContent(
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Tune,
-                    contentDescription = null,
-                    tint = TossColors.White
-                )
+                Icon(Icons.Rounded.Tune, contentDescription = null, tint = TossColors.White)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (initialTask == null) "추가" else "저장",
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text(text = if (initialTask == null) "추가" else "저장", fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -391,11 +463,7 @@ private fun PriorityChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label) }
-    )
+    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
 }
 
 @Composable
@@ -405,10 +473,37 @@ private fun EnforcementChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
+}
+
+@Composable
+private fun ManualPenaltyChipRow(
+    manualPenaltyType: PenaltyType?,
+    onSelect: (PenaltyType) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ManualPenaltyChip(PenaltyType.PROOF_REQUIRED, manualPenaltyType, onSelect)
+            ManualPenaltyChip(PenaltyType.DEVICE_LOCK, manualPenaltyType, onSelect)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ManualPenaltyChip(PenaltyType.ACCOUNTABILITY_CALL, manualPenaltyType, onSelect)
+            ManualPenaltyChip(PenaltyType.ACCOUNTABILITY_KAKAO, manualPenaltyType, onSelect)
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun ManualPenaltyChip(
+    type: PenaltyType,
+    selectedType: PenaltyType?,
+    onSelect: (PenaltyType) -> Unit
+) {
     FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label) }
+        selected = selectedType == type,
+        onClick = { onSelect(type) },
+        label = { Text(type.toKoreanLabel()) }
     )
 }
 
@@ -464,4 +559,11 @@ private fun DueDatePickerDialog(
 private fun formatDate(timestamp: Long): String {
     val format = SimpleDateFormat("M월 d일 (E) HH:mm", Locale.KOREA)
     return format.format(Date(timestamp))
+}
+
+private fun PenaltyType.toKoreanLabel(): String = when (this) {
+    PenaltyType.PROOF_REQUIRED -> "인증 고정"
+    PenaltyType.DEVICE_LOCK -> "앱 고정 잠금"
+    PenaltyType.ACCOUNTABILITY_CALL -> "책임 파트너 전화"
+    PenaltyType.ACCOUNTABILITY_KAKAO -> "책임 파트너 카카오톡"
 }

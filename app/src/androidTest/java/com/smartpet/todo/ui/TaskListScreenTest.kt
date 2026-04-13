@@ -3,7 +3,9 @@ package com.smartpet.todo.ui
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -12,6 +14,7 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import com.smartpet.todo.data.Task
 import com.smartpet.todo.data.TaskPriority
+import com.smartpet.todo.penalty.PenaltySettings
 import com.smartpet.todo.viewmodel.TaskUiState
 import org.junit.Rule
 import org.junit.Test
@@ -27,8 +30,9 @@ class TaskListScreenTest {
             SmartPetTodoTheme {
                 TaskListScreen(
                     uiState = TaskUiState(tasks = emptyList(), isLoading = false),
-                    onAddTask = { _, _, _, _, _, _ -> },
-                    onUpdateTask = { },
+                    onAddTask = { _, _, _, _, _, _, _ -> },
+                    onUpdateTask = { _, _ -> },
+                    onSavePenaltySettings = { },
                     onToggleComplete = { },
                     onDeleteTask = { },
                     onRestoreTask = { },
@@ -51,7 +55,7 @@ class TaskListScreenTest {
             SmartPetTodoTheme {
                 TaskListScreen(
                     uiState = uiState,
-                    onAddTask = { title, description, dueDate, priority, maxLevel, est ->
+                    onAddTask = { title, description, dueDate, priority, maxLevel, est, _ ->
                         tasks.add(
                             Task(
                                 title = title,
@@ -63,10 +67,11 @@ class TaskListScreenTest {
                             )
                         )
                     },
-                    onUpdateTask = { updated ->
+                    onUpdateTask = { updated, _ ->
                         val idx = tasks.indexOfFirst { it.id == updated.id }
                         if (idx != -1) tasks[idx] = updated
                     },
+                    onSavePenaltySettings = { },
                     onToggleComplete = { id ->
                         val idx = tasks.indexOfFirst { it.id == id }
                         if (idx != -1) {
@@ -74,9 +79,7 @@ class TaskListScreenTest {
                             tasks[idx] = t.copy(isCompleted = !t.isCompleted)
                         }
                     },
-                    onDeleteTask = { id ->
-                        tasks.removeAll { it.id == id }
-                    },
+                    onDeleteTask = { id -> tasks.removeAll { it.id == id } },
                     onRestoreTask = { task ->
                         val idx = tasks.indexOfFirst { it.id == task.id }
                         if (idx == -1) tasks.add(task) else tasks[idx] = task
@@ -90,7 +93,6 @@ class TaskListScreenTest {
         composeRule.onNodeWithTag("task_editor_dialog").assertExists()
         composeRule.onNodeWithTag("task_editor_title").performTextInput("운동")
         composeRule.onNodeWithTag("task_editor_save").performClick()
-
         composeRule.onNodeWithText("운동").assertExists()
     }
 
@@ -102,18 +104,20 @@ class TaskListScreenTest {
                     Task(id = "idA", title = "A", priority = TaskPriority.NORMAL, maxEnforcementLevel = 3)
                 )
             }
+            var settings by remember { mutableStateOf(PenaltySettings()) }
             val uiState by remember {
-                derivedStateOf { TaskUiState(tasks = tasks.toList(), isLoading = false) }
+                derivedStateOf { TaskUiState(tasks = tasks.toList(), isLoading = false, penaltySettings = settings) }
             }
 
             SmartPetTodoTheme {
                 TaskListScreen(
                     uiState = uiState,
-                    onAddTask = { _, _, _, _, _, _ -> },
-                    onUpdateTask = { updated ->
+                    onAddTask = { _, _, _, _, _, _, _ -> },
+                    onUpdateTask = { updated, _ ->
                         val idx = tasks.indexOfFirst { it.id == updated.id }
                         if (idx != -1) tasks[idx] = updated
                     },
+                    onSavePenaltySettings = { settings = it },
                     onToggleComplete = { },
                     onDeleteTask = { },
                     onRestoreTask = { },
@@ -122,7 +126,6 @@ class TaskListScreenTest {
             }
         }
 
-        // Open editor
         composeRule.onNodeWithTag("task_card_idA").performClick()
         composeRule.onNodeWithTag("task_editor_title").performTextClearance()
         composeRule.onNodeWithTag("task_editor_title").performTextInput("B")

@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -14,42 +15,72 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import com.smartpet.todo.data.RemoteStorage
 import com.smartpet.todo.data.Task
 import com.smartpet.todo.data.TaskPriority
+import com.smartpet.todo.penalty.PenaltyDraft
+import com.smartpet.todo.penalty.PenaltyProfile
+import com.smartpet.todo.penalty.PenaltySelector
+import com.smartpet.todo.penalty.PenaltySettings
+import com.smartpet.todo.penalty.toPresentation
 import com.smartpet.todo.pet.PetBehavior
+import com.smartpet.todo.ui.components.PenaltySettingsDialog
 import com.smartpet.todo.ui.components.PetStatusCard
 import com.smartpet.todo.ui.components.TaskCard
 import com.smartpet.todo.ui.components.TaskEditorDialog
@@ -60,15 +91,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.URLConnection
 
-/**
- * Main task list screen with pet status and task items
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TaskListScreen(
     uiState: TaskUiState,
-    onAddTask: (String, String, Long?, TaskPriority, Int, Int?) -> Unit,
-    onUpdateTask: (Task) -> Unit,
+    onAddTask: (String, String, Long?, TaskPriority, Int, Int?, PenaltyDraft) -> Unit,
+    onUpdateTask: (Task, PenaltyDraft) -> Unit,
+    onSavePenaltySettings: (PenaltySettings) -> Unit,
     onToggleComplete: (String) -> Unit,
     onDeleteTask: (String) -> Unit,
     onRestoreTask: (Task) -> Unit,
@@ -81,6 +110,7 @@ fun TaskListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var pendingVerifyTask by remember { mutableStateOf<Task?>(null) }
     var verifyingTaskId by remember { mutableStateOf<String?>(null) }
+    var isSettingsOpen by rememberSaveable { mutableStateOf(false) }
 
     val verifyPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         val task = pendingVerifyTask
@@ -116,7 +146,6 @@ fun TaskListScreen(
         }
     }
 
-    // Recompose periodically so due/urgency updates without user interaction.
     val nowMillis by produceState(initialValue = System.currentTimeMillis()) {
         while (true) {
             delay(30_000L)
@@ -158,11 +187,7 @@ fun TaskListScreen(
             LargeTopAppBar(
                 title = {
                     Column {
-                        Text(
-                            text = "마더",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Text(text = "마더", maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
                             text = "미루지 않게, 환경이 도와줘요",
                             style = MaterialTheme.typography.bodySmall,
@@ -174,10 +199,16 @@ fun TaskListScreen(
                 },
                 actions = {
                     IconButton(
+                        onClick = { isSettingsOpen = true },
+                        modifier = Modifier.testTag("settings_button")
+                    ) {
+                        Icon(Icons.Rounded.Settings, contentDescription = "벌칙 설정")
+                    }
+                    IconButton(
                         onClick = onRefresh,
                         modifier = Modifier.testTag("refresh_button")
                     ) {
-                        Icon(imageVector = Icons.Rounded.Refresh, contentDescription = "새로고침")
+                        Icon(Icons.Rounded.Refresh, contentDescription = "새로고침")
                     }
                 }
             )
@@ -197,11 +228,7 @@ fun TaskListScreen(
                     ),
                 shape = CircleShape
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Add,
-                    contentDescription = "할 일 추가",
-                    modifier = Modifier.size(28.dp)
-                )
+                Icon(Icons.Rounded.Add, contentDescription = "할 일 추가", modifier = Modifier.size(28.dp))
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -239,26 +266,18 @@ fun TaskListScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         PetStatusCard(petState = petState)
-                        StatsCard(
-                            totalCount = totalCount,
-                            completedCount = completedCount,
-                            overdueCount = overdueCount
-                        )
-                        TaskFilterRow(
-                            filter = filter,
-                            onFilterChange = { filter = it }
-                        )
+                        StatsCard(totalCount, completedCount, overdueCount)
+                        PenaltyOverviewCard(uiState = uiState)
+                        TaskFilterRow(filter = filter, onFilterChange = { filter = it })
                     }
 
-                    Box(
-                        modifier = Modifier.weight(1f),
-                        contentAlignment = Alignment.TopCenter
-                    ) {
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
                         TasksList(
                             filter = filter,
                             activeTasks = activeTasks,
                             completedTasks = completedTasks,
                             nowMillis = nowMillis,
+                            uiState = uiState,
                             listState = listState,
                             onTaskClick = { task ->
                                 editorTask = task
@@ -291,21 +310,15 @@ fun TaskListScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     PetStatusCard(petState = petState)
-                    StatsCard(
-                        totalCount = totalCount,
-                        completedCount = completedCount,
-                        overdueCount = overdueCount
-                    )
-                    TaskFilterRow(
-                        filter = filter,
-                        onFilterChange = { filter = it }
-                    )
-
+                    StatsCard(totalCount, completedCount, overdueCount)
+                    PenaltyOverviewCard(uiState = uiState)
+                    TaskFilterRow(filter = filter, onFilterChange = { filter = it })
                     TasksList(
                         filter = filter,
                         activeTasks = activeTasks,
                         completedTasks = completedTasks,
                         nowMillis = nowMillis,
+                        uiState = uiState,
                         listState = listState,
                         onTaskClick = { task ->
                             editorTask = task
@@ -334,14 +347,17 @@ fun TaskListScreen(
     if (isEditorOpen) {
         TaskEditorDialog(
             initialTask = editorTask,
+            initialPenaltyProfile = editorTask?.let { uiState.penaltyProfiles[it.id] },
+            penaltySettings = uiState.penaltySettings,
+            penaltyRuntimeStatus = uiState.penaltyRuntimeStatus,
             onDismiss = {
                 isEditorOpen = false
                 editorTask = null
             },
-            onSave = { title, description, dueDate, priority, maxEnforcementLevel, estimatedMinutes ->
+            onSave = { title, description, dueDate, priority, maxEnforcementLevel, estimatedMinutes, penaltyDraft ->
                 val editing = editorTask
                 if (editing == null) {
-                    onAddTask(title, description, dueDate, priority, maxEnforcementLevel, estimatedMinutes)
+                    onAddTask(title, description, dueDate, priority, maxEnforcementLevel, estimatedMinutes, penaltyDraft)
                 } else {
                     onUpdateTask(
                         editing.copy(
@@ -351,11 +367,24 @@ fun TaskListScreen(
                             priority = priority,
                             maxEnforcementLevel = maxEnforcementLevel,
                             estimatedMinutes = estimatedMinutes
-                        )
+                        ),
+                        penaltyDraft
                     )
                 }
                 isEditorOpen = false
                 editorTask = null
+            }
+        )
+    }
+
+    if (isSettingsOpen) {
+        PenaltySettingsDialog(
+            initialSettings = uiState.penaltySettings,
+            runtimeStatus = uiState.penaltyRuntimeStatus,
+            onDismiss = { isSettingsOpen = false },
+            onSave = {
+                onSavePenaltySettings(it)
+                isSettingsOpen = false
             }
         )
     }
@@ -367,22 +396,20 @@ fun TaskListScreen(
             title = { Text("삭제할까요?") },
             text = { Text("“${task.title}”을(를) 삭제합니다.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        pendingDelete = null
-                        onDeleteTask(task.id)
-                        scope.launch {
-                            val result = snackbarHostState.showSnackbar(
-                                message = "삭제했어요",
-                                actionLabel = "되돌리기",
-                                duration = SnackbarDuration.Short
-                            )
-                            if (result == SnackbarResult.ActionPerformed) {
-                                onRestoreTask(task)
-                            }
+                TextButton(onClick = {
+                    pendingDelete = null
+                    onDeleteTask(task.id)
+                    scope.launch {
+                        val result = snackbarHostState.showSnackbar(
+                            message = "삭제했어요",
+                            actionLabel = "되돌리기",
+                            duration = SnackbarDuration.Short
+                        )
+                        if (result == SnackbarResult.ActionPerformed) {
+                            onRestoreTask(task)
                         }
                     }
-                ) {
+                }) {
                     Text("삭제")
                 }
             },
@@ -418,11 +445,7 @@ private fun StatsCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "진행 상황",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text("진행 상황", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 if (totalCount > 0) {
                     Text(
                         text = "$completedCount / $totalCount",
@@ -456,7 +479,41 @@ private fun StatsCard(
 }
 
 @Composable
+private fun PenaltyOverviewCard(uiState: TaskUiState) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("벌칙 준비 상태", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = buildString {
+                    append(if (uiState.penaltySettings.target.partnerName.isBlank()) "책임 파트너 미설정" else "파트너 ${uiState.penaltySettings.target.partnerName}")
+                    append(" · ")
+                    append(if (uiState.penaltyRuntimeStatus.notificationListenerEnabled) "Kakao 알림 접근 허용" else "Kakao 알림 접근 필요")
+                    append(" · ")
+                    append(if (uiState.penaltyRuntimeStatus.isLockTaskPermitted) "앱 잠금 준비 완료" else "앱 잠금 미준비")
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 20.sp
+            )
+            if (uiState.penaltyRuntimeStatus.cachedKakaoRooms.isNotEmpty()) {
+                Text(
+                    text = "캐시된 방 ${uiState.penaltyRuntimeStatus.cachedKakaoRooms.size}개",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun TaskFilterRow(
     filter: TaskFilter,
     onFilterChange: (TaskFilter) -> Unit,
@@ -469,21 +526,9 @@ private fun TaskFilterRow(
             .horizontalScroll(scrollState),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        FilterChip(
-            selected = filter == TaskFilter.ACTIVE,
-            onClick = { onFilterChange(TaskFilter.ACTIVE) },
-            label = { Text("진행중") }
-        )
-        FilterChip(
-            selected = filter == TaskFilter.ALL,
-            onClick = { onFilterChange(TaskFilter.ALL) },
-            label = { Text("전체") }
-        )
-        FilterChip(
-            selected = filter == TaskFilter.COMPLETED,
-            onClick = { onFilterChange(TaskFilter.COMPLETED) },
-            label = { Text("완료") }
-        )
+        FilterChip(selected = filter == TaskFilter.ACTIVE, onClick = { onFilterChange(TaskFilter.ACTIVE) }, label = { Text("진행중") })
+        FilterChip(selected = filter == TaskFilter.ALL, onClick = { onFilterChange(TaskFilter.ALL) }, label = { Text("전체") })
+        FilterChip(selected = filter == TaskFilter.COMPLETED, onClick = { onFilterChange(TaskFilter.COMPLETED) }, label = { Text("완료") })
     }
 }
 
@@ -493,6 +538,7 @@ private fun TasksList(
     activeTasks: List<Task>,
     completedTasks: List<Task>,
     nowMillis: Long,
+    uiState: TaskUiState,
     listState: androidx.compose.foundation.lazy.LazyListState,
     onTaskClick: (Task) -> Unit,
     onToggleComplete: (String) -> Unit,
@@ -518,9 +564,7 @@ private fun TasksList(
         if (showEmpty) {
             item(key = "empty_state") {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 56.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 56.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -544,17 +588,22 @@ private fun TasksList(
 
         if (filter == TaskFilter.ALL || filter == TaskFilter.ACTIVE) {
             item(key = "active_header") {
-                Text(
-                    text = "할 일",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text("할 일", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             }
 
             items(activeTasks, key = { it.id }) { task ->
+                val resolution = remember(task, uiState.penaltyProfiles, uiState.penaltySettings, uiState.penaltyRuntimeStatus) {
+                    PenaltySelector.resolve(
+                        task = task,
+                        profile = uiState.penaltyProfiles[task.id],
+                        settings = uiState.penaltySettings,
+                        runtimeStatus = uiState.penaltyRuntimeStatus
+                    )
+                }
                 TaskCard(
                     task = task,
                     nowMillis = nowMillis,
+                    penaltyPresentation = resolution.toPresentation(),
                     onToggleComplete = { onToggleComplete(task.id) },
                     onVerify = { onVerifyTask(task) },
                     isVerifying = verifyingTaskId == task.id,
@@ -576,9 +625,18 @@ private fun TasksList(
             }
 
             items(completedTasks, key = { it.id }) { task ->
+                val resolution = remember(task, uiState.penaltyProfiles, uiState.penaltySettings, uiState.penaltyRuntimeStatus) {
+                    PenaltySelector.resolve(
+                        task = task,
+                        profile = uiState.penaltyProfiles[task.id],
+                        settings = uiState.penaltySettings,
+                        runtimeStatus = uiState.penaltyRuntimeStatus
+                    )
+                }
                 TaskCard(
                     task = task,
                     nowMillis = nowMillis,
+                    penaltyPresentation = resolution.toPresentation(),
                     onToggleComplete = { onToggleComplete(task.id) },
                     onVerify = null,
                     isVerifying = false,
@@ -603,11 +661,7 @@ private fun readUploadImage(contentResolver: ContentResolver, uri: Uri): RemoteS
         ?: URLConnection.guessContentTypeFromName(name)
         ?: "application/octet-stream"
 
-    return RemoteStorage.UploadImage(
-        filename = name,
-        mimeType = mimeType,
-        bytes = bytes
-    )
+    return RemoteStorage.UploadImage(filename = name, mimeType = mimeType, bytes = bytes)
 }
 
 private fun queryDisplayName(contentResolver: ContentResolver, uri: Uri): String? {
